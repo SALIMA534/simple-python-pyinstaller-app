@@ -1,19 +1,32 @@
-FROM jenkins/jenkins:lts
+FROM python:3
 
-USER root
+RUN apt-get update && apt-get install -y \
+    libpq-dev \
+    gcc \
+    gettext
 
-RUN apt-get update && \
-    apt-get -y install \
-    apt-transport-https \
-    ca-certificates \
-    gnupg2 \
-    software-properties-common
-RUN curl -fsSL https://download.docker.com/linux/$(. /etc/os-release; echo "$ID")/gpg | apt-key add -
-RUN add-apt-repository \
-   "deb [arch=amd64] https://download.docker.com/linux/$(. /etc/os-release; echo "$ID") \
-   $(lsb_release -cs) \
-   stable"  
-RUN apt-get update
-RUN apt-get -y install docker-ce
+# Requirements are installed here to ensure they will be cached.
+COPY ./requirements.txt /requirements.txt
+RUN pip install --no-cache-dir --default-timeout=200 -r /requirements.txt \
+    && rm -rf /requirements.txt
 
-USER jenkins
+COPY ./entrypoint.sh /entrypoint
+RUN sed -i 's/\r$//g' /entrypoint
+RUN chmod +x /entrypoint
+
+COPY ./start-django.sh /start-django
+RUN sed -i 's/\r$//g' /start-django
+RUN chmod +x /start-django
+
+COPY . /app
+
+COPY config/nginx/default /etc/nginx/sites-available/default
+COPY config/nginx/nginx.conf /etc/nginx/nginx.conf
+
+WORKDIR /app
+
+EXPOSE 80/tcp 443/tcp
+
+ENTRYPOINT ["/entrypoint"]
+
+CMD ["sh" , "/start-django"]
